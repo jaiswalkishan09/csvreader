@@ -1,12 +1,33 @@
 const fs = require('fs');
 const download = require('download');
 const csv = require('csv-parser')
-const {removeFile}=require("../common/commonFunctions")
-
+// require knex for database connection
+var knex = require('knex'); 
+const {removeFile,readLogicForSemiColonSepratedValue,insertIntoTable,getBooksDetails}=require("../common/commonFunctions");
+const { tables } = require('../common/tableAlias');
+const dbConnection=require("../common/connection")
 const readCsv=async (req,res)=>{
     let fileName="";
+    let  databaseConnection;
     try{
         let url=req.body.url;
+        let category=req.body.category;
+        let tableName=""
+        if(category==="author")
+        {
+            tableName=tables.author;
+        }
+        else if(category==="magazine")
+        {
+            tableName=tables.magazines;
+        }
+        else if(category==="books")
+        {
+            tableName=tables.books;
+        }
+        else{
+            return res.status(400).json({message:"please provide category among author,magazine,books."});
+        }
         if(url)
         {
             let splitUrl=url.split('/');
@@ -22,64 +43,27 @@ const readCsv=async (req,res)=>{
                 .on("data", function (row) {
                     results.push(row);
                 })
-                .on("end", function () {
-                    let keys=Object.keys(results[0])[0];
-                    let keysValue=keys;
-                    keys=keys.split(';');
-                    
-                    if(results.length>0 && keys.length>1)
-                    {   
-                        let ans=[];
-                        for(let i=0;i<results.length;i++)
-                        {
-                            let value=results[i][keysValue];
-                            let values=value.split(';');
-                            let allKeys=Object.keys(results[i]);
-                            let keyValue={};
-                            let j=0;
-                            while(j<values.length && j<keys.length)
-                            {  
-                                keyValue[keys[j]]=values[j];
-                                j++;
-                            }
-                            for(let k=1;k<allKeys.length;k++)
-                            {
-                                let allKeyValue=results[i][allKeys[k]].split(';');
-
-                                if(allKeyValue.length>1)
-                                {   j--;
-                                    if(j<keys.length)
-                                    {
-                                        keyValue[keys[j]]=keyValue[keys[j]]+','+allKeyValue[0];
-                                        j++;
-                                    }
-                                    for(let l=1;l<allKeyValue.length;l++)
-                                    {
-                                        if(j<keys.length)
-                                        {
-                                            keyValue[keys[j]]=allKeyValue[l];
-                                        }
-                                        j++;
-                                    }
-                                }
-                                else{
-                                    if(j<=keys.length)
-                                    {
-                                        j--;
-                                        keyValue[keys[j]]=keyValue[keys[j]]+','+allKeyValue[0];
-                                        j++;
-                                    }
-                                }
-                            }
-                            ans.push(keyValue);
-                        }
-                        removeFile(fileName);
-                        console.log(ans);
-                        return res.status(200).json({result:ans});
-                    }
+                .on("end", async function () {
+                    results= await readLogicForSemiColonSepratedValue(results);
+                    let connectDb= await dbConnection.getDataBaseConnection();
+                    databaseConnection  =knex(connectDb.connection);
                     removeFile(fileName);
                     console.log(results);
-                    return res.status(200).json({result:results});
+                    if(results)
+                    {
+                        let insertResult= await insertIntoTable(databaseConnection,results,tableName);
+                        console.log(insertResult)
+                        if(!insertResult)
+                        {   databaseConnection?databaseConnection.destroy():null;
+                            return res.status(500).json({message:"Error occured while inserting the parse data into table."});
+                        }
+                        databaseConnection?databaseConnection.destroy():null;
+                        return res.status(200).json({result:results});
+                    }
+                    else{
+                        throw("Error while doing  json logic"); 
+                    }
+                    
                 })
                 .on("error", function (error) {
                     removeFile(fileName);
@@ -88,29 +72,57 @@ const readCsv=async (req,res)=>{
                 })
             }
             else{
+                databaseConnection?databaseConnection.destroy():null;
                 removeFile(fileName);
                 return res.status(400).json({message:"Please provide valid csv file."});
             }
         }
         else{
+            databaseConnection?databaseConnection.destroy():null;
             removeFile(fileName);
             return res.status(400).json({message:"Please provide a valid url."});
         }
 
     }
     catch(e)
-    {   removeFile(fileName);
+    {   
+        databaseConnection?databaseConnection.destroy():null;
+        removeFile(fileName);
         console.log("Error in readcsv functon",e);
         return res.status(500).json({message:"Something went wrong please try again"});
     }
 }
+
+const getBookMagazineAuthor=async (req,res)=>{
+    let databaseConnection;
+    try{
+        let category=req.body.category;
+        let details=[];
+        let connectDb= await dbConnection.getDataBaseConnection();
+        databaseConnection  =knex(connectDb.connection);
+        if(category=='books')
+        {
+            details=await getBooksDetails(databaseConnection);
+        }
+        if(category=='magazine')
+        {
+            
+        }
+        return res.status(200).json({details:details});
+    }
+    catch(e)
+    {
+
+    }
+}
+
+
 
 const findBooksByItsISBN=async (req,res)=>{
     let fileName="";
     try{
         let url=req.body.url;
         let isbn=req.body.isbn;
-        console.log(isbn,"ddddddddddd")
         let authorEmail=req.body.authorEmail;
         if(!isbn && !authorEmail)
         {
@@ -131,59 +143,8 @@ const findBooksByItsISBN=async (req,res)=>{
                 .on("data", function (row) {
                     results.push(row);
                 })
-                .on("end", function () {
-                    let keys=Object.keys(results[0])[0];
-                    let keysValue=keys;
-                    keys=keys.split(';');
-                    
-                    if(results.length>0 && keys.length>1)
-                    {   
-                        let ans=[];
-                        for(let i=0;i<results.length;i++)
-                        {
-                            let value=results[i][keysValue];
-                            let values=value.split(';');
-                            let allKeys=Object.keys(results[i]);
-                            let keyValue={};
-                            let j=0;
-                            while(j<values.length && j<keys.length)
-                            {  
-                                keyValue[keys[j]]=values[j];
-                                j++;
-                            }
-                            for(let k=1;k<allKeys.length;k++)
-                            {
-                                let allKeyValue=results[i][allKeys[k]].split(';');
-
-                                if(allKeyValue.length>1)
-                                {   j--;
-                                    if(j<keys.length)
-                                    {
-                                        keyValue[keys[j]]=keyValue[keys[j]]+','+allKeyValue[0];
-                                        j++;
-                                    }
-                                    for(let l=1;l<allKeyValue.length;l++)
-                                    {
-                                        if(j<keys.length)
-                                        {
-                                            keyValue[keys[j]]=allKeyValue[l];
-                                        }
-                                        j++;
-                                    }
-                                }
-                                else{
-                                    if(j<=keys.length)
-                                    {
-                                        j--;
-                                        keyValue[keys[j]]=keyValue[keys[j]]+','+allKeyValue[0];
-                                        j++;
-                                    }
-                                }
-                            }
-                            ans.push(keyValue);
-                        }
-                        results=ans;
-                    }
+                .on("end", async function () {
+                    results= await readLogicForSemiColonSepratedValue(results);
                     removeFile(fileName);
                     let matchingRecord=[];
                     for(let i=0;i<results.length;i++)
@@ -204,7 +165,7 @@ const findBooksByItsISBN=async (req,res)=>{
                             }
                         }
                     }
-                    //console.log(matchingRecord);
+                    console.log(matchingRecord);
                     return res.status(200).json({matchingRecord:matchingRecord});
                 })
                 .on("error", function (error) {
@@ -231,4 +192,23 @@ const findBooksByItsISBN=async (req,res)=>{
     }
 }
 
-module.exports={readCsv,findBooksByItsISBN};
+const getDataOfBooksAndMagazingInSortedOrder=async (req,res)=>{
+    try{
+        let magazineUrl=req.body.magazineUrl;
+        let authorUrl=req.body.authorUrl;
+        if(magazineUrl )
+        {
+            console.log(magazineUrl)
+            req.body.url=magazineUrl;
+            let x=await readCsv(req,res);
+            console.log(x)
+        }
+        // return readCsv(req,res);
+    }
+    catch(e)
+    {
+
+    }
+}
+
+module.exports={readCsv,findBooksByItsISBN,getDataOfBooksAndMagazingInSortedOrder,getBookMagazineAuthor};

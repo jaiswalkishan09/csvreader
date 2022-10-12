@@ -4,7 +4,7 @@ const dotenv=require("dotenv")
 const csvRouter = require("./routes/csvRoute");
 const cors= require("cors")
 
-// dotenv.config({path:__dirname+'/.env'});
+dotenv.config({path:__dirname+'/.env'});
 
 app.use(express.json());
 // app.use(cors());
