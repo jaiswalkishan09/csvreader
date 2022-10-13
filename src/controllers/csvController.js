@@ -5,7 +5,7 @@ const download = require('download');
 // const csv = require('csv-parser')
 // require knex for database connection
 var knex = require('knex'); 
-const {removeFile,readLogicForSemiColonSepratedValue,insertIntoTable,getBooksDetails,getMagazineDetails,getAuthorDetails}=require("../common/commonFunctions");
+const {removeFile,insertIntoTable,getBooksDetails,getMagazineDetails,getAuthorDetails}=require("../common/commonFunctions");
 const { tables } = require('../common/tableAlias');
 const dbConnection=require("../common/connection");
 
