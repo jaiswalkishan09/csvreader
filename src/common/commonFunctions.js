@@ -121,9 +121,10 @@ async function getBooksDetails(databaseConnection,isbn,authorEmail)
         {
             authorEmail="%"+authorEmail+"%";
             subQuery=subQuery.where('authors','like',authorEmail)
+            console
         }
         return(
-            subQuery
+            await subQuery
             .then(data=>{
                 return data;
             })
@@ -195,6 +196,7 @@ async function getAuthorDetails(databaseConnection,isbn,authorEmail)
         return false;
     }
 }
+
 
 
 module.exports={removeFile,readLogicForSemiColonSepratedValue,insertIntoTable,getBooksDetails,getMagazineDetails,getAuthorDetails}

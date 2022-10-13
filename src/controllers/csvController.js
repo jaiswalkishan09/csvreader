@@ -1,11 +1,12 @@
-const fs = require('fs');
+let csvToJson = require('convert-csv-to-json');
 const download = require('download');
-const csv = require('csv-parser')
+// const csv = require('csv-parser')
 // require knex for database connection
 var knex = require('knex'); 
-const {removeFile,readLogicForSemiColonSepratedValue,insertIntoTable,getBooksDetails}=require("../common/commonFunctions");
+const {removeFile,readLogicForSemiColonSepratedValue,insertIntoTable,getBooksDetails,getMagazineDetails,getAuthorDetails}=require("../common/commonFunctions");
 const { tables } = require('../common/tableAlias');
-const dbConnection=require("../common/connection")
+const dbConnection=require("../common/connection");
+
 const readCsv=async (req,res)=>{
     let fileName="";
     let  databaseConnection;
@@ -38,56 +39,30 @@ const readCsv=async (req,res)=>{
                 fileName=__dirname +'/../tempCsvFiles/'+fileName;
                 await download(url,__dirname +'/../tempCsvFiles');
                 let results=[];
-                fs.createReadStream(fileName)
-                .pipe(csv())
-                .on("data", function (row) {
-                    results.push(row);
-                })
-                .on("end", async function () {
-                    results= await readLogicForSemiColonSepratedValue(results);
-                    let connectDb= await dbConnection.getDataBaseConnection();
-                    databaseConnection  =knex(connectDb.connection);
-                    removeFile(fileName);
-                    console.log(results);
-                    if(results)
-                    {
-                        let insertResult= await insertIntoTable(databaseConnection,results,tableName);
-                        console.log(insertResult)
-                        if(!insertResult)
-                        {   databaseConnection?databaseConnection.destroy():null;
-                            return res.status(500).json({message:"Error occured while inserting the parse data into table."});
-                        }
-                        databaseConnection?databaseConnection.destroy():null;
-                        return res.status(200).json({result:results});
-                    }
-                    else{
-                        throw("Error while doing  json logic"); 
-                    }
-                    
-                })
-                .on("error", function (error) {
-                    removeFile(fileName);
-                    console.log("Error in getListOfJsonFromCsv main catch block",error);
-                    throw("Error while getting json from csv");
-                })
-            }
-            else{
-                databaseConnection?databaseConnection.destroy():null;
+                results = csvToJson.getJsonFromCsv(fileName);
+                console.log(results)
+                let connectDb= await dbConnection.getDataBaseConnection();
+                databaseConnection  =knex(connectDb.connection);
                 removeFile(fileName);
-                return res.status(400).json({message:"Please provide valid csv file."});
+                if(results)
+                {   
+                    console.log(results)
+                    let insertResult= await insertIntoTable(databaseConnection,results,tableName);
+                    if(!insertResult)
+                    {   databaseConnection?databaseConnection.destroy():null;
+                        return res.status(500).json({message:"Error occured while inserting the parse data into table."});
+                    }
+                    databaseConnection?databaseConnection.destroy():null;
+                    return res.status(200).json({result:results});
+                }
+                else{
+                    throw("Error while parsing the csv file"); 
+                }
             }
         }
-        else{
-            databaseConnection?databaseConnection.destroy():null;
-            removeFile(fileName);
-            return res.status(400).json({message:"Please provide a valid url."});
-        }
-
     }
     catch(e)
-    {   
-        databaseConnection?databaseConnection.destroy():null;
-        removeFile(fileName);
+    {
         console.log("Error in readcsv functon",e);
         return res.status(500).json({message:"Something went wrong please try again"});
     }
@@ -104,111 +79,120 @@ const getBookMagazineAuthor=async (req,res)=>{
         {
             details=await getBooksDetails(databaseConnection);
         }
-        if(category=='magazine')
+        else if(category=='magazine')
         {
-            
+            details=await getMagazineDetails(databaseConnection);
         }
-        return res.status(200).json({details:details});
+        else if(category=='author')
+        {
+            details= await getAuthorDetails(databaseConnection);
+        }
+        else{
+            databaseConnection?databaseConnection.destroy():null;
+            return res.status(400).json({message:"Please provide a category."});
+        }
+        if(details)
+        {
+            databaseConnection?databaseConnection.destroy():null;
+            return res.status(200).json({details:details});
+        }
+        else{
+            throw("Error while processing the record to ge getbookmagazineauthor details.")
+        }
+        
     }
     catch(e)
     {
-
+        databaseConnection?databaseConnection.destroy():null;
+        console.log("Error in getBookMagazineAuthor main catch block",e);
+        return res.status(500).json({message:"Something went wrong please try again"});   
     }
 }
 
-
-
-const findBooksByItsISBN=async (req,res)=>{
-    let fileName="";
+const findBookMagazineByItsISBNAuthor=async (req,res)=>{
+    let databaseConnection;
     try{
-        let url=req.body.url;
+        let category=req.body.category;
         let isbn=req.body.isbn;
-        let authorEmail=req.body.authorEmail;
-        if(!isbn && !authorEmail)
+        let authorEmail=req.body.author;
+        if(!isbn && !authorEmail || (isbn && authorEmail))
         {
-            return res.status(400).json({message:"Please provide valid isbn or author email."});
+            return res.status(400).json({message:"please provide isbn or authorEmail to filter."});
         }
-        if(url)
+        let details=[];
+        let connectDb= await dbConnection.getDataBaseConnection();
+        databaseConnection  =knex(connectDb.connection);
+        if(category=='books')
         {
-            let splitUrl=url.split('/');
-            fileName=splitUrl[splitUrl.length-1];
-            let extension=fileName.split('.');
-            if(extension.length==2 && extension[1]=="csv")
-            {   
-                fileName=__dirname +'/../tempCsvFiles/'+fileName;
-                await download(url,__dirname +'/../tempCsvFiles');
-                let results=[];
-                fs.createReadStream(fileName)
-                .pipe(csv())
-                .on("data", function (row) {
-                    results.push(row);
-                })
-                .on("end", async function () {
-                    results= await readLogicForSemiColonSepratedValue(results);
-                    removeFile(fileName);
-                    let matchingRecord=[];
-                    for(let i=0;i<results.length;i++)
-                    {   
-                        if(results[i]['isbn']===isbn)
-                        {
-                            matchingRecord.push(results[i]);
-                        }
-                        else if(authorEmail)
-                        {
-                            let authors=results[i]['authors'].split(',');
-                            for(let j=0;j<authors.length;j++)
-                            {
-                                if(authors[j]===authorEmail)
-                                {
-                                    matchingRecord.push(results[i]);
-                                }
-                            }
-                        }
-                    }
-                    console.log(matchingRecord);
-                    return res.status(200).json({matchingRecord:matchingRecord});
-                })
-                .on("error", function (error) {
-                    removeFile(fileName);
-                    console.log("Error in findBooksByItsISBN main catch block",error);
-                    throw("Error while getting json from csv");
-                })
-            }
-            else{
-                removeFile(fileName);
-                return res.status(400).json({message:"Please provide valid csv file."});
-            }
+            details=await getBooksDetails(databaseConnection,isbn,authorEmail);
+        }
+        else if(category=='magazine')
+        {
+            details=await getMagazineDetails(databaseConnection,isbn,authorEmail);
         }
         else{
-            removeFile(fileName);
-            return res.status(400).json({message:"Please provide a valid url or isb number."});
+            databaseConnection?databaseConnection.destroy():null;
+            return res.status(400).json({message:"Please provide a category."});
         }
 
+        if(details && authorEmail)
+        {   let filterDetails=[];
+            for(let i=0;i<details.length;i++)
+            {
+                let getAuthorDetails=details[i]['Authors'].split(',');
+                for(let j=0;j<getAuthorDetails.length;j++)
+                {
+                    if(getAuthorDetails[j]==authorEmail)
+                    {
+                        filterDetails.push(details[i]);
+                    }
+                }
+            }
+            details=filterDetails;
+        }
+
+        if(details)
+        {
+            databaseConnection?databaseConnection.destroy():null;
+            return res.status(200).json({details:details});
+        }
+        else{
+            throw("Error while processing the record to ge findBookMagazineByItsISBNAuthor details.")
+        }
     }
     catch(e)
-    {   removeFile(fileName);
-        console.log("Error in findBooksByItsISBN functon",e);
-        return res.status(500).json({message:"Something went wrong please try again"});
+    {
+        databaseConnection?databaseConnection.destroy():null;
+        console.log("Error in findBookMagazineByItsISBNAuthor main catch block",e);
+        return res.status(500).json({message:"Something went wrong please try again"});   
     }
 }
 
 const getDataOfBooksAndMagazingInSortedOrder=async (req,res)=>{
+    let databaseConnection;
     try{
-        let magazineUrl=req.body.magazineUrl;
-        let authorUrl=req.body.authorUrl;
-        if(magazineUrl )
+        let connectDb= await dbConnection.getDataBaseConnection();
+        databaseConnection  =knex(connectDb.connection);
+        let [bookDetails,magazineDetails] = await Promise.all([getBooksDetails(databaseConnection),getMagazineDetails(databaseConnection)]);
+        if(bookDetails && magazineDetails)
         {
-            console.log(magazineUrl)
-            req.body.url=magazineUrl;
-            let x=await readCsv(req,res);
-            console.log(x)
+            let details=bookDetails.concat(magazineDetails);
+            details=details.sort((a, b) => {
+                if (a.Title < b.Title) {
+                  return -1;
+                }
+              });
+            return res.status(200).json({details:details});
         }
-        // return readCsv(req,res);
+        else{
+            throw("Error while getting bookDetails and magazine Details");
+        }
     }
     catch(e)
     {
-
+        databaseConnection?databaseConnection.destroy():null;
+        console.log("Error in getDataOfBooksAndMagazingInSortedOrder main catch block",e);
+        return res.status(500).json({message:"Something went wrong please try again"});  
     }
 }
-
-module.exports={readCsv,findBooksByItsISBN,getDataOfBooksAndMagazingInSortedOrder,getBookMagazineAuthor};
+module.exports={readCsv,getBookMagazineAuthor,findBookMagazineByItsISBNAuthor,getDataOfBooksAndMagazingInSortedOrder};

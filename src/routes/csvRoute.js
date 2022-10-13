@@ -1,13 +1,13 @@
 const express= require("express");
-const { readCsv,findBooksByItsISBN,getDataOfBooksAndMagazingInSortedOrder,getBookMagazineAuthor } = require("../controllers/csvController");
+const { readCsv,getBookMagazineAuthor,findBookMagazineByItsISBNAuthor ,getDataOfBooksAndMagazingInSortedOrder} = require("../controllers/csvController");
 const csvRouter= express.Router();
 
 csvRouter.post("/readcsv",readCsv);
 
-csvRouter.post("/findmatchingrecord",findBooksByItsISBN);
-
-csvRouter.post("/bookmagazinesortbytitle",getDataOfBooksAndMagazingInSortedOrder);
+csvRouter.post("/findmatchingrecord",findBookMagazineByItsISBNAuthor);
 
 csvRouter.post("/getbookmagazineauthor",getBookMagazineAuthor);
+
+csvRouter.post("/bookmagazinesortbytitle",getDataOfBooksAndMagazingInSortedOrder);
 
 module.exports = csvRouter;
