@@ -1,4 +1,6 @@
 let csvToJson = require('convert-csv-to-json');
+const converter = require('json-2-csv')
+const fs = require('fs')
 const download = require('download');
 // const csv = require('csv-parser')
 // require knex for database connection
@@ -7,6 +9,7 @@ const {removeFile,readLogicForSemiColonSepratedValue,insertIntoTable,getBooksDet
 const { tables } = require('../common/tableAlias');
 const dbConnection=require("../common/connection");
 
+
 const readCsv=async (req,res)=>{
     let fileName="";
     let  databaseConnection;
@@ -14,11 +17,11 @@ const readCsv=async (req,res)=>{
         let url=req.body.url;
         let category=req.body.category;
         let tableName=""
-        if(category==="author")
+        if(category==="authors")
         {
             tableName=tables.author;
         }
-        else if(category==="magazine")
+        else if(category==="magazines")
         {
             tableName=tables.magazines;
         }
@@ -27,7 +30,7 @@ const readCsv=async (req,res)=>{
             tableName=tables.books;
         }
         else{
-            return res.status(400).json({message:"please provide category among author,magazine,books."});
+            return res.status(400).json({message:"please provide category among author,magazines,books."});
         }
         if(url)
         {
@@ -79,11 +82,11 @@ const getBookMagazineAuthor=async (req,res)=>{
         {
             details=await getBooksDetails(databaseConnection);
         }
-        else if(category=='magazine')
+        else if(category=='magazines')
         {
             details=await getMagazineDetails(databaseConnection);
         }
-        else if(category=='author')
+        else if(category=='authors')
         {
             details= await getAuthorDetails(databaseConnection);
         }
@@ -126,7 +129,7 @@ const findBookMagazineByItsISBNAuthor=async (req,res)=>{
         {
             details=await getBooksDetails(databaseConnection,isbn,authorEmail);
         }
-        else if(category=='magazine')
+        else if(category=='magazines')
         {
             details=await getMagazineDetails(databaseConnection,isbn,authorEmail);
         }
@@ -185,7 +188,7 @@ const getDataOfBooksAndMagazingInSortedOrder=async (req,res)=>{
             return res.status(200).json({details:details});
         }
         else{
-            throw("Error while getting bookDetails and magazine Details");
+            throw("Error while getting bookDetails and magazines Details");
         }
     }
     catch(e)
@@ -195,4 +198,48 @@ const getDataOfBooksAndMagazingInSortedOrder=async (req,res)=>{
         return res.status(500).json({message:"Something went wrong please try again"});  
     }
 }
-module.exports={readCsv,getBookMagazineAuthor,findBookMagazineByItsISBNAuthor,getDataOfBooksAndMagazingInSortedOrder};
+
+const convertJson2Csv=async (req,res)=>{
+    let databaseConnection;
+    try{
+        let category='bookmagazine';
+        let connectDb= await dbConnection.getDataBaseConnection();
+        databaseConnection  =knex(connectDb.connection);
+        if(category=='bookmagazine')
+        {
+            let [bookDetails,magazineDetails] = await Promise.all([getBooksDetails(databaseConnection),getMagazineDetails(databaseConnection)]);
+            if(bookDetails && magazineDetails)
+            {
+                details=bookDetails.concat(magazineDetails);
+            }
+            else{
+                throw("Error while getting bookDetails and magazines Details");
+            }
+        }
+
+        if(details)
+        {
+            let deleteFilePath=__dirname +'/../tempGeneratedCsvFiles/';
+            fs.readdirSync(deleteFilePath).forEach(f => fs.rmSync(`${deleteFilePath}/${f}`));
+            const csv = await converter.json2csvAsync(details);
+            let random = (Math.random() + 1).toString(36).substring(7);
+            let tempGeneratedFile=__dirname +'/../tempGeneratedCsvFiles/'+category+random+'.csv';
+            console.log(csv)
+            // write CSV to a file
+            fs.writeFileSync(tempGeneratedFile, csv);
+            return res.status(200).download(tempGeneratedFile);
+        }
+        else{
+            throw("Error while getting bookDetails and magazines Details");
+        }
+    }
+    catch(e)
+    {
+        databaseConnection?databaseConnection.destroy():null;
+        console.log("Error in convertJson2Csv main catch block",e);
+        return res.status(500).json({message:"Something went wrong please try again"});     
+    }
+}
+
+
+module.exports={readCsv,getBookMagazineAuthor,findBookMagazineByItsISBNAuthor,getDataOfBooksAndMagazingInSortedOrder,convertJson2Csv};
